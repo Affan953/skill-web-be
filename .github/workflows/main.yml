@@ -1,0 +1,62 @@
+name: Deploy NestJS
+
+
+on:
+  push:
+    branches:
+      - main
+
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+
+      # Build aplikasi
+      - name: Install All & Build NestJS
+        run: |
+          npm ci
+          npm run build
+
+
+      # Hapus devDependencies & install ulang hanya production modules
+      - name: Prune Dev Dependencies
+        run: |
+          rm -rf node_modules
+          npm ci --omit=dev
+
+
+      # Kirim dist, node_modules, dan package.json ke Server
+      - name: Deploy to Hosting via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: "dist,node_modules,package.json,app.js"
+          target: "${{ secrets.TARGET_DIR }}"
+
+
+      # Cukup restart Passenger tanpa perlu jalankan npm ci di server
+      - name: Restart Application
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            cd ${{ secrets.TARGET_DIR }}
+            mkdir -p tmp
+            touch tmp/restart.txt
